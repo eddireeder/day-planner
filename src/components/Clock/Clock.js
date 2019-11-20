@@ -12,16 +12,33 @@ class Clock extends React.Component {
     // Define initial state
     this.state = {
       width: 0,
-      height: 0
+      height: 0,
+      intervalId: null,
+      currentTime: Date.now()
     };
+    // Bind methods to this
+    this.update = this.update.bind(this);
   }
 
   componentDidMount() {
-    // Update state with width and height
+    // Copy old state
     let newState = { ...this.state };
+    // Store div width and height
     newState.width = this.divElement.clientWidth;
     newState.height = this.divElement.clientHeight;
+    // Set interval for updating SVG due to time and store id
+    const intervalId = setInterval(
+      this.update,
+      this.updateIntervalSeconds * 1000
+    );
+    newState.intervalId = intervalId;
+    // Update state
     this.setState(newState);
+  }
+
+  componentWillUnmount() {
+    // Clear interval
+    clearInterval(this.state.intervalId);
   }
 
   polarToCartesian(cx, cy, r, angleDegrees) {
@@ -77,10 +94,11 @@ class Clock extends React.Component {
           );
           return (
             <text
+              key={index}
               x={position.x}
               y={position.y}
-              dominant-baseline="middle"
-              text-anchor="middle"
+              dominantBaseline="middle"
+              textAnchor="middle"
               fill="white"
               fontFamily="AvenirHeavy"
             >
@@ -110,10 +128,29 @@ class Clock extends React.Component {
         x2={end.x}
         y2={end.y}
         stroke="#D2D2D2"
-        strokeWidth="4"
+        strokeWidth="6"
         strokeLinecap="round"
       ></line>
     );
+  }
+
+  update() {
+    // Copy state
+    let newState = { ...this.state };
+    // Update current time
+    newState.currentTime = Date.now();
+    // Update state
+    this.setState(newState);
+  }
+
+  tsToAngle(ts) {
+    // Compute the milliseconds since start of day
+    let timeMs = ts % (1000 * 60 * 60 * 24);
+    // If greater than 12 hours, subtract 12 hours (convert to 12 hour time)
+    timeMs =
+      timeMs > 1000 * 60 * 60 * 12 ? timeMs - 1000 * 60 * 60 * 12 : timeMs;
+    // Convert to 360 degrees and return
+    return (timeMs / (1000 * 60 * 60 * 12)) * 360;
   }
 
   render() {
@@ -134,7 +171,7 @@ class Clock extends React.Component {
             199,
             "#FF9E9E"
           )}
-          {this.generateLine(27)}
+          {this.generateLine(this.tsToAngle(this.state.currentTime))}
           <circle className="donut-hole" cx="50%" cy="50%" r="20%" />
           {this.generateHourTexts()}
         </svg>
