@@ -1,0 +1,18 @@
+.Clock {
+  position: relative;
+  height: 30rem;
+  width: 30rem;
+}
+
+.Clock > svg {
+  width: 100%;
+  height: 100%;
+}
+
+.Clock > svg > .donut-background {
+  fill: #e7e7e7;
+}
+
+.Clock > svg > .donut-hole {
+  fill: white;
+}
