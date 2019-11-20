@@ -11,18 +11,31 @@ class Clock extends React.Component {
     this.updateIntervalSeconds = 1;
     // Define initial state
     this.state = {
-      width: 0,
-      height: 0,
+      boundingClientRect: null,
+      width: null,
+      height: null,
       intervalId: null,
-      currentTime: Date.now()
+      currentTime: Date.now(),
+      activities: [
+        {
+          timeFrom: 1574280000000,
+          timeTo: 1574297400000,
+          description: null,
+          colorString: "#FF9E9E"
+        }
+      ],
+      cursorAngle: null
     };
     // Bind methods to this
     this.update = this.update.bind(this);
+    this.onMouseOverFreeSpace = this.onMouseOverFreeSpace.bind(this);
   }
 
   componentDidMount() {
     // Copy old state
     let newState = { ...this.state };
+    // Store the x and y offset
+    newState.boundingClientRect = this.divElement.getBoundingClientRect();
     // Store div width and height
     newState.width = this.divElement.clientWidth;
     newState.height = this.divElement.clientHeight;
@@ -49,13 +62,24 @@ class Clock extends React.Component {
     };
   }
 
-  generateSegmentPath(r, startAngleDegrees, endAngleDegrees, colorString) {
+  cartesianToPolar(cx, cy, x, y) {
+    // Calculate angle in radians
+    const angleRadians = Math.atan((y - cy) / (x - cx));
+    // Convert to degrees
+    let angleDegrees = angleRadians * (180.0 / Math.PI);
+    // Apply quadrant rule
+    if (x - cx > 0) angleDegrees += 90;
+    else angleDegrees += 270;
+    return angleDegrees;
+  }
+
+  generateSegmentPathD(r, startAngleDegrees, endAngleDegrees) {
     const cx = this.state.width / 2.0;
     const cy = this.state.height / 2.0;
     const start = this.polarToCartesian(cx, cy, r, endAngleDegrees);
     const end = this.polarToCartesian(cx, cy, r, startAngleDegrees);
     const largeArcFlag = endAngleDegrees - startAngleDegrees <= 180 ? "0" : "1";
-    const d = [
+    return [
       "M",
       start.x,
       start.y,
@@ -72,7 +96,6 @@ class Clock extends React.Component {
       cy,
       "Z"
     ].join(" ");
-    return <path d={d} fill={colorString}></path>;
   }
 
   generateHourTexts() {
@@ -153,28 +176,55 @@ class Clock extends React.Component {
     return (timeMs / (1000 * 60 * 60 * 12)) * 360;
   }
 
+  generateActivitySegmentPaths() {
+    // Return path elements in a react fragment
+    return (
+      <React.Fragment>
+        {this.state.activities.map((item, index) => {
+          let d = this.generateSegmentPathD(
+            this.state.width / 2.0,
+            this.tsToAngle(item.timeFrom),
+            this.tsToAngle(item.timeTo)
+          );
+          // Return path element
+          return <path d={d} fill={item.colorString} key={index}></path>;
+        })}
+      </React.Fragment>
+    );
+  }
+
+  onMouseOverFreeSpace(e) {
+    // Apply component offset to centre coordinates
+    const cx = this.state.boundingClientRect.left + this.state.width / 2.0;
+    const cy = this.state.boundingClientRect.top + this.state.height / 2.0;
+    // Calculate the angle mouse is currently over
+    const angleDegrees = this.cartesianToPolar(cx, cy, e.clientX, e.clientY);
+    // Update cursor angle in state
+    let newState = { ...this.state };
+    newState.cursorAngle = angleDegrees;
+    this.setState(newState);
+  }
+
   render() {
     return (
       <div className="Clock" ref={divElement => (this.divElement = divElement)}>
-        <svg>
-          <circle
-            className="donut-background"
-            cx="50%"
-            cy="50%"
-            r={this.state.width / 2.0 - this.backgroundPercOffset}
-          />
-          {this.generateSegmentPath(this.state.width / 2.0, 32, 90, "#5CEDCA")}
-          {this.generateSegmentPath(this.state.width / 2.0, 97, 126, "#FFB1E0")}
-          {this.generateSegmentPath(
-            this.state.width / 2.0,
-            143,
-            199,
-            "#FF9E9E"
-          )}
-          {this.generateLine(this.tsToAngle(this.state.currentTime))}
-          <circle className="donut-hole" cx="50%" cy="50%" r="20%" />
-          {this.generateHourTexts()}
-        </svg>
+        {this.state.width != null && this.state.height != null && (
+          <svg>
+            <circle
+              className="donut-background"
+              cx="50%"
+              cy="50%"
+              r={this.state.width / 2.0 - this.backgroundPercOffset}
+              onMouseMove={e => this.onMouseOverFreeSpace(e)}
+            />
+            {this.generateActivitySegmentPaths()}
+            {this.state.cursorAngle != null &&
+              this.generateLine(this.state.cursorAngle)}
+            {this.generateLine(this.tsToAngle(this.state.currentTime))}
+            <circle className="donut-hole" cx="50%" cy="50%" r="20%" />
+            {this.generateHourTexts()}
+          </svg>
+        )}
       </div>
     );
   }
