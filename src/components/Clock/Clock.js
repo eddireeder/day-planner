@@ -9,6 +9,7 @@ class Clock extends React.Component {
     this.textPercOffset = 15;
     this.currentTimeLinePercOffset = 0;
     this.updateIntervalSeconds = 1;
+    this.lineStrokeWidth = 6;
     // Define initial state
     this.state = {
       boundingClientRect: null,
@@ -19,16 +20,17 @@ class Clock extends React.Component {
       activities: [
         {
           timeFrom: 1574280000000,
-          timeTo: 1574297400000,
+          timeTo: 1574287400000,
           description: null,
           colorString: "#FF9E9E"
         }
       ],
-      cursorAngle: null
+      cursorAngle: null,
+      nextColor: null
     };
     // Bind methods to this
     this.update = this.update.bind(this);
-    this.onMouseOverFreeSpace = this.onMouseOverFreeSpace.bind(this);
+    this.onMouseOver = this.onMouseOver.bind(this);
   }
 
   componentDidMount() {
@@ -45,6 +47,8 @@ class Clock extends React.Component {
       this.updateIntervalSeconds * 1000
     );
     newState.intervalId = intervalId;
+    // Set next color
+    newState.nextColor = "#FFB1E0";
     // Update state
     this.setState(newState);
   }
@@ -68,17 +72,19 @@ class Clock extends React.Component {
     // Convert to degrees
     let angleDegrees = angleRadians * (180.0 / Math.PI);
     // Apply quadrant rule
-    if (x - cx > 0) angleDegrees += 90;
+    if (x - cx >= 0) angleDegrees += 90;
     else angleDegrees += 270;
     return angleDegrees;
   }
 
-  generateSegmentPathD(r, startAngleDegrees, endAngleDegrees) {
+  generateSegmentSVGPathD(r, startAngleDegrees, endAngleDegrees) {
     const cx = this.state.width / 2.0;
     const cy = this.state.height / 2.0;
     const start = this.polarToCartesian(cx, cy, r, endAngleDegrees);
     const end = this.polarToCartesian(cx, cy, r, startAngleDegrees);
-    const largeArcFlag = endAngleDegrees - startAngleDegrees <= 180 ? "0" : "1";
+    const difference = endAngleDegrees - startAngleDegrees;
+    const largeArcFlag =
+      (difference > 0 && difference < 180) || difference < -180 ? "0" : "1";
     return [
       "M",
       start.x,
@@ -98,7 +104,7 @@ class Clock extends React.Component {
     ].join(" ");
   }
 
-  generateHourTexts() {
+  generateHourSVGTexts() {
     // Compute centre coordinate
     const cx = this.state.width / 2.0;
     const cy = this.state.height / 2.0;
@@ -133,14 +139,15 @@ class Clock extends React.Component {
     );
   }
 
-  generateLine(angleDegrees) {
+  generateSVGLine(angleDegrees, colorString) {
     // Compute centre coordinate
     const cx = this.state.width / 2.0;
     const cy = this.state.height / 2.0;
     // Compute the length of the line
     const length =
       (this.state.width / 2.0) *
-      ((100.0 + this.currentTimeLinePercOffset) / 100.0);
+        ((100.0 + this.currentTimeLinePercOffset) / 100.0) -
+      this.lineStrokeWidth / 2.0;
     // Calculate the end of the line using the length as radius
     const end = this.polarToCartesian(cx, cy, length, angleDegrees);
     // Return the line
@@ -150,8 +157,8 @@ class Clock extends React.Component {
         y1={cy}
         x2={end.x}
         y2={end.y}
-        stroke="#D2D2D2"
-        strokeWidth="6"
+        stroke={colorString}
+        strokeWidth={this.lineStrokeWidth}
         strokeLinecap="round"
       ></line>
     );
@@ -176,53 +183,148 @@ class Clock extends React.Component {
     return (timeMs / (1000 * 60 * 60 * 12)) * 360;
   }
 
-  generateActivitySegmentPaths() {
+  angleToFutureTs(angleDegrees) {
+    // Get current ts
+    const currentTs = Date.now();
+    // Convert to angle
+    const currentTsAngle = this.tsToAngle(currentTs);
+    // Calculate the forward angle difference
+    let forwardAngleDiff = 0;
+    if (angleDegrees > currentTsAngle) {
+      forwardAngleDiff = angleDegrees - currentTsAngle;
+    } else if (angleDegrees < currentTsAngle) {
+      forwardAngleDiff = 360 - currentTsAngle + angleDegrees;
+    }
+    // Convert angle difference to time difference
+    const forwardMsDiff = (forwardAngleDiff / 360.0) * 1000 * 60 * 60 * 12;
+    // Return the current ts + time difference
+    return currentTs + forwardMsDiff;
+  }
+
+  generateActivitySVGs() {
     // Return path elements in a react fragment
     return (
       <React.Fragment>
         {this.state.activities.map((item, index) => {
-          let d = this.generateSegmentPathD(
+          const angleDegreesTo =
+            item.timeTo != null
+              ? this.tsToAngle(item.timeTo)
+              : this.state.cursorAngle;
+          let d = this.generateSegmentSVGPathD(
             this.state.width / 2.0,
             this.tsToAngle(item.timeFrom),
-            this.tsToAngle(item.timeTo)
+            angleDegreesTo
           );
-          // Return path element
-          return <path d={d} fill={item.colorString} key={index}></path>;
+          // Return path and line elements
+          return (
+            <React.Fragment key={index}>
+              {this.generateSVGLine(
+                this.tsToAngle(item.timeFrom),
+                item.colorString
+              )}
+              <path d={d} fill={item.colorString}></path>
+              {this.generateSVGLine(angleDegreesTo, item.colorString)}
+            </React.Fragment>
+          );
         })}
       </React.Fragment>
     );
   }
 
-  onMouseOverFreeSpace(e) {
+  onMouseOver(e) {
     // Apply component offset to centre coordinates
     const cx = this.state.boundingClientRect.left + this.state.width / 2.0;
     const cy = this.state.boundingClientRect.top + this.state.height / 2.0;
     // Calculate the angle mouse is currently over
     const angleDegrees = this.cartesianToPolar(cx, cy, e.clientX, e.clientY);
-    // Update cursor angle in state
+    // Check whether angle is free space
+    let inFreeSpace = true;
+    for (let activity of this.state.activities) {
+      // Don't count activity if it doesn't have a time to selected yet
+      if (activity.timeTo == null) continue;
+      // Convert the times to angles
+      const start = this.tsToAngle(activity.timeFrom);
+      const end = this.tsToAngle(activity.timeTo);
+      if (end < start) {
+        if (
+          (angleDegrees >= start && angleDegrees <= 360) ||
+          angleDegrees <= end
+        ) {
+          inFreeSpace = false;
+          break;
+        }
+      } else if (angleDegrees >= start && angleDegrees <= end) {
+        inFreeSpace = false;
+        break;
+      }
+    }
+    // Update cursor angle and whether in free space in state
     let newState = { ...this.state };
     newState.cursorAngle = angleDegrees;
+    newState.inFreeSpace = inFreeSpace;
     this.setState(newState);
+  }
+
+  onMouseClick(e) {
+    // Check whether currently choosing a stop time for an activity
+    let selectingTimeTo = false;
+    for (let i = 0; i < this.state.activities.length; i++) {
+      if (this.state.activities[i].timeTo == null) {
+        let newState = { ...this.state };
+        // Set the time to as the cursor angle's time
+        newState.activities[i].timeTo = this.angleToFutureTs(
+          this.state.cursorAngle
+        );
+        // Add new next color
+        newState.nextColor = "#5CEDCA";
+        // Update state
+        this.setState(newState);
+        // Update variable and exit loop
+        selectingTimeTo = true;
+        break;
+      }
+    }
+    // Check whether angle is free space (and not selecting time to)
+    if (this.state.inFreeSpace && !selectingTimeTo) {
+      // Add new activity to state with no time to
+      let newState = { ...this.state };
+      newState.activities.push({
+        timeFrom: this.angleToFutureTs(this.state.cursorAngle),
+        timeTo: null,
+        description: null,
+        colorString: this.state.nextColor
+      });
+      this.setState(newState);
+    }
   }
 
   render() {
     return (
       <div className="Clock" ref={divElement => (this.divElement = divElement)}>
         {this.state.width != null && this.state.height != null && (
-          <svg>
+          <svg
+            onMouseMove={e => this.onMouseOver(e)}
+            onClick={e => this.onMouseClick(e)}
+          >
             <circle
               className="donut-background"
               cx="50%"
               cy="50%"
               r={this.state.width / 2.0 - this.backgroundPercOffset}
-              onMouseMove={e => this.onMouseOverFreeSpace(e)}
             />
-            {this.generateActivitySegmentPaths()}
+            {this.generateActivitySVGs()}
             {this.state.cursorAngle != null &&
-              this.generateLine(this.state.cursorAngle)}
-            {this.generateLine(this.tsToAngle(this.state.currentTime))}
+              this.state.inFreeSpace &&
+              this.generateSVGLine(
+                this.state.cursorAngle,
+                this.state.nextColor
+              )}
+            {this.generateSVGLine(
+              this.tsToAngle(this.state.currentTime),
+              "#D2D2D2"
+            )}
             <circle className="donut-hole" cx="50%" cy="50%" r="20%" />
-            {this.generateHourTexts()}
+            {this.generateHourSVGTexts()}
           </svg>
         )}
       </div>
