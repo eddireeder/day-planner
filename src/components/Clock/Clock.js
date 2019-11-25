@@ -1,5 +1,7 @@
 import React from "react";
 import "./Clock.css";
+import actions from "./actions";
+import nouns from "./nouns";
 
 class Clock extends React.Component {
   constructor(props) {
@@ -10,6 +12,14 @@ class Clock extends React.Component {
     this.currentTimeLinePercOffset = 0;
     this.updateIntervalSeconds = 1;
     this.lineStrokeWidth = 6;
+    this.colorStrings = [
+      "#efb5e8",
+      "#82c6ff",
+      "#ffd67c",
+      "#ff9265",
+      "#b8acf3",
+      "#4eecc6"
+    ];
     // Define initial state
     this.state = {
       boundingClientRect: null,
@@ -17,16 +27,12 @@ class Clock extends React.Component {
       height: null,
       intervalId: null,
       currentTime: Date.now(),
-      activities: [
-        {
-          timeFrom: 1574280000000,
-          timeTo: 1574287400000,
-          description: null,
-          colorString: "#FF9E9E"
-        }
-      ],
       cursorAngle: null,
-      nextColor: null
+      nextColor: this.colorStrings[
+        Math.floor(Math.random() * this.colorStrings.length)
+      ],
+      usedActions: [],
+      usedNouns: []
     };
     // Bind methods to this
     this.update = this.update.bind(this);
@@ -48,7 +54,9 @@ class Clock extends React.Component {
     );
     newState.intervalId = intervalId;
     // Set next color
-    newState.nextColor = "#FFB1E0";
+    newState.nextColor = this.colorStrings[
+      Math.floor(Math.random() * this.colorStrings.length)
+    ];
     // Update state
     this.setState(newState);
   }
@@ -56,6 +64,51 @@ class Clock extends React.Component {
   componentWillUnmount() {
     // Clear interval
     clearInterval(this.state.intervalId);
+  }
+
+  getUnusedColor() {
+    // Copy color array
+    let colorStrings = [...this.colorStrings];
+    // Remove any colors that are already being used
+    for (let activity of this.props.activities) {
+      const i = colorStrings.indexOf(activity.colorString);
+      if (i !== -1) colorStrings.splice(i, 1);
+    }
+    // Select random color from remaining colors
+    return colorStrings.length > 0
+      ? colorStrings[Math.floor(Math.random() * colorStrings.length)]
+      : null;
+  }
+
+  generateDescription() {
+    // Copy state to alter
+    let newState = { ...this.state };
+    // Get a random unused action (if possible)
+    let action;
+    if (this.state.usedActions.length === actions.length) {
+      action = actions[Math.floor(Math.random() * actions.length)];
+    } else {
+      while (true) {
+        action = actions[Math.floor(Math.random() * actions.length)];
+        if (!this.state.usedActions.includes(action)) break;
+      }
+      newState.usedActions.push(action);
+    }
+    // Get a random unused noun (if possible)
+    let noun;
+    if (this.state.usedNouns.length === nouns.length) {
+      noun = nouns[Math.floor(Math.random() * nouns.length)];
+    } else {
+      while (true) {
+        noun = nouns[Math.floor(Math.random() * nouns.length)];
+        if (!this.state.usedNouns.includes(noun)) break;
+      }
+      newState.usedNouns.push(noun);
+    }
+    // Update state
+    this.setState(newState);
+    // Return description
+    return action + " " + noun;
   }
 
   polarToCartesian(cx, cy, r, angleDegrees) {
@@ -205,7 +258,7 @@ class Clock extends React.Component {
     // Return path elements in a react fragment
     return (
       <React.Fragment>
-        {this.state.activities.map((item, index) => {
+        {this.props.activities.map((item, index) => {
           const angleDegreesTo =
             item.timeTo != null
               ? this.tsToAngle(item.timeTo)
@@ -239,7 +292,7 @@ class Clock extends React.Component {
     const angleDegrees = this.cartesianToPolar(cx, cy, e.clientX, e.clientY);
     // Check whether angle is free space
     let inFreeSpace = true;
-    for (let activity of this.state.activities) {
+    for (let activity of this.props.activities) {
       // Don't count activity if it doesn't have a time to selected yet
       if (activity.timeTo == null) continue;
       // Convert the times to angles
@@ -268,16 +321,16 @@ class Clock extends React.Component {
   onMouseClick(e) {
     // Check whether currently choosing a stop time for an activity
     let selectingTimeTo = false;
-    for (let i = 0; i < this.state.activities.length; i++) {
-      if (this.state.activities[i].timeTo == null) {
-        let newState = { ...this.state };
+    for (let i = 0; i < this.props.activities.length; i++) {
+      if (this.props.activities[i].timeTo == null) {
+        let newActivities = [...this.props.activities];
         // Set the time to as the cursor angle's time
-        newState.activities[i].timeTo = this.angleToFutureTs(
-          this.state.cursorAngle
-        );
-        // Add new next color
-        newState.nextColor = "#5CEDCA";
-        // Update state
+        newActivities[i].timeTo = this.angleToFutureTs(this.state.cursorAngle);
+        // Update parents activities array
+        this.props.setActivities(newActivities);
+        // Update next color
+        let newState = { ...this.state };
+        newState.nextColor = this.getUnusedColor();
         this.setState(newState);
         // Update variable and exit loop
         selectingTimeTo = true;
@@ -286,15 +339,15 @@ class Clock extends React.Component {
     }
     // Check whether angle is free space (and not selecting time to)
     if (this.state.inFreeSpace && !selectingTimeTo) {
-      // Add new activity to state with no time to
-      let newState = { ...this.state };
-      newState.activities.push({
+      // Add new activity to parent array
+      let newActivites = [...this.props.activities];
+      newActivites.push({
         timeFrom: this.angleToFutureTs(this.state.cursorAngle),
         timeTo: null,
-        description: null,
+        description: this.generateDescription(),
         colorString: this.state.nextColor
       });
-      this.setState(newState);
+      this.props.setActivities(newActivites);
     }
   }
 
