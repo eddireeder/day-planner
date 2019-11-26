@@ -21,5 +21,13 @@ export default [
   "planet",
   "potato",
   "queen",
-  "coffee"
+  "coffee",
+  "bill",
+  "duck",
+  "car",
+  "rock",
+  "shoe",
+  "dj",
+  "president",
+  "butcher"
 ];

@@ -14,5 +14,16 @@ export default [
   "Study the",
   "Shout at the",
   "Grow a new",
-  "Kick the"
+  "Kick the",
+  "Befriend the",
+  "Kiss the",
+  "Laugh with the",
+  "Meet the",
+  "Chuckle at the",
+  "Draw the",
+  "Build the",
+  "Destroy the",
+  "Lie with the",
+  "Lick the",
+  "Pay the"
 ];
