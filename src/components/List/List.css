@@ -1,7 +1,19 @@
 .List {
-  width: 10rem;
+  width: 12rem;
+  margin-right: 0.5rem;
 }
 
 .List .description {
   color: white;
+  width: fit-content;
+  font-family: "AvenirHeavy";
+  padding: 0.2rem 0.6rem;
+  border-radius: 0.2rem;
+  margin-bottom: 0.5rem;
+}
+
+.List .helper {
+  font-family: "AvenirHeavy";
+  color: #bbbbbb;
+  width: max-content;
 }

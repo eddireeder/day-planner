@@ -23,11 +23,13 @@ class App extends React.Component {
   render() {
     return (
       <div className="App">
-        <List activities={this.state.activities}></List>
-        <Clock
-          activities={this.state.activities}
-          setActivities={this.setActivities}
-        ></Clock>
+        <div className="planner">
+          <List activities={this.state.activities}></List>
+          <Clock
+            activities={this.state.activities}
+            setActivities={this.setActivities}
+          ></Clock>
+        </div>
       </div>
     );
   }

@@ -18,7 +18,12 @@ class Clock extends React.Component {
       "#ffd67c",
       "#ff9265",
       "#b8acf3",
-      "#4eecc6"
+      "#4eecc6",
+      "#5ae88f",
+      "#10d9f3",
+      "#ff988b",
+      "#b385f5",
+      "#8ae28e"
     ];
     // Define initial state
     this.state = {
@@ -66,7 +71,7 @@ class Clock extends React.Component {
     clearInterval(this.state.intervalId);
   }
 
-  getUnusedColor() {
+  getColor() {
     // Copy color array
     let colorStrings = [...this.colorStrings];
     // Remove any colors that are already being used
@@ -74,10 +79,10 @@ class Clock extends React.Component {
       const i = colorStrings.indexOf(activity.colorString);
       if (i !== -1) colorStrings.splice(i, 1);
     }
-    // Select random color from remaining colors
+    // Select random color from remaining colors (or from all if all used)
     return colorStrings.length > 0
       ? colorStrings[Math.floor(Math.random() * colorStrings.length)]
-      : null;
+      : this.colorStrings[Math.floor(Math.random() * this.colorStrings.length)];
   }
 
   generateDescription() {
@@ -326,11 +331,13 @@ class Clock extends React.Component {
         let newActivities = [...this.props.activities];
         // Set the time to as the cursor angle's time
         newActivities[i].timeTo = this.angleToFutureTs(this.state.cursorAngle);
+        // Give a fake description
+        newActivities[i].description = this.generateDescription();
         // Update parents activities array
         this.props.setActivities(newActivities);
         // Update next color
         let newState = { ...this.state };
-        newState.nextColor = this.getUnusedColor();
+        newState.nextColor = this.getColor();
         this.setState(newState);
         // Update variable and exit loop
         selectingTimeTo = true;
@@ -344,7 +351,7 @@ class Clock extends React.Component {
       newActivites.push({
         timeFrom: this.angleToFutureTs(this.state.cursorAngle),
         timeTo: null,
-        description: this.generateDescription(),
+        description: null,
         colorString: this.state.nextColor
       });
       this.props.setActivities(newActivites);
