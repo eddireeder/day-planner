@@ -21,7 +21,7 @@ class List extends React.Component {
                     key={index}
                     className="description"
                     style={{ backgroundColor: value.colorString }}
-                    contenteditable="true"
+                    contentEditable="true"
                   >
                     {value.description}
                   </div>

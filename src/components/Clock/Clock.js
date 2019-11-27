@@ -19,7 +19,6 @@ class Clock extends React.Component {
       "#ff9265",
       "#b8acf3",
       "#4eecc6",
-      "#5ae88f",
       "#10d9f3",
       "#ff988b",
       "#b385f5",
@@ -31,11 +30,11 @@ class Clock extends React.Component {
       width: null,
       height: null,
       intervalId: null,
-      currentTime: Date.now(),
+      timeFrom: null,
+      timeTo: null,
+      timeFromAngle: null,
       cursorAngle: null,
-      nextColor: this.colorStrings[
-        Math.floor(Math.random() * this.colorStrings.length)
-      ],
+      nextColor: null,
       usedActions: [],
       usedNouns: []
     };
@@ -58,6 +57,12 @@ class Clock extends React.Component {
       this.updateIntervalSeconds * 1000
     );
     newState.intervalId = intervalId;
+    // Update clock time from and time to
+    const currentTs = Date.now();
+    newState.timeFrom = currentTs;
+    newState.timeTo = currentTs + 1000 * 60 * 60 * 12;
+    // Update angle of time from
+    newState.timeFromAngle = this.tsToAngle(currentTs);
     // Set next color
     newState.nextColor = this.colorStrings[
       Math.floor(Math.random() * this.colorStrings.length)
@@ -225,10 +230,23 @@ class Clock extends React.Component {
   update() {
     // Copy state
     let newState = { ...this.state };
-    // Update current time
-    newState.currentTime = Date.now();
+    // Update clock time from and time to
+    const currentTs = Date.now();
+    newState.timeFrom = currentTs;
+    newState.timeTo = currentTs + 1000 * 60 * 60 * 12;
+    // Update angle of time from
+    newState.timeFromAngle = this.tsToAngle(currentTs);
     // Update state
     this.setState(newState);
+    // If an activity timeFrom is outdated, update to current time
+    for (let i = 0; i < this.props.activities.length; i++) {
+      if (this.props.activities[i].timeFrom < currentTs) {
+        let newActivities = [...this.props.activities];
+        newActivities[i].timeFrom = currentTs;
+        this.props.setActivities(newActivities);
+        break;
+      }
+    }
   }
 
   tsToAngle(ts) {
@@ -241,22 +259,19 @@ class Clock extends React.Component {
     return (timeMs / (1000 * 60 * 60 * 12)) * 360;
   }
 
-  angleToFutureTs(angleDegrees) {
-    // Get current ts
-    const currentTs = Date.now();
-    // Convert to angle
-    const currentTsAngle = this.tsToAngle(currentTs);
-    // Calculate the forward angle difference
+  angleToTs(angleDegrees) {
+    // Calculate the forward angle difference from time from
     let forwardAngleDiff = 0;
-    if (angleDegrees > currentTsAngle) {
-      forwardAngleDiff = angleDegrees - currentTsAngle;
-    } else if (angleDegrees < currentTsAngle) {
-      forwardAngleDiff = 360 - currentTsAngle + angleDegrees;
+    if (angleDegrees > this.state.timeFromAngle) {
+      forwardAngleDiff = angleDegrees - this.state.timeFromAngle;
+    } else if (angleDegrees < this.state.timeFromAngle) {
+      forwardAngleDiff = 360 - this.state.timeFromAngle + angleDegrees;
     }
     // Convert angle difference to time difference
-    const forwardMsDiff = (forwardAngleDiff / 360.0) * 1000 * 60 * 60 * 12;
+    const forwardMsDiff =
+      (forwardAngleDiff / 360.0) * (this.state.timeTo - this.state.timeFrom);
     // Return the current ts + time difference
-    return currentTs + forwardMsDiff;
+    return this.state.timeFrom + forwardMsDiff;
   }
 
   generateActivitySVGs() {
@@ -294,26 +309,53 @@ class Clock extends React.Component {
     const cx = this.state.boundingClientRect.left + this.state.width / 2.0;
     const cy = this.state.boundingClientRect.top + this.state.height / 2.0;
     // Calculate the angle mouse is currently over
-    const angleDegrees = this.cartesianToPolar(cx, cy, e.clientX, e.clientY);
-    // Check whether angle is free space
+    let angleDegrees = this.cartesianToPolar(cx, cy, e.clientX, e.clientY);
+    // Cursor is in free space unless expressed otherwise
     let inFreeSpace = true;
-    for (let activity of this.props.activities) {
-      // Don't count activity if it doesn't have a time to selected yet
-      if (activity.timeTo == null) continue;
-      // Convert the times to angles
-      const start = this.tsToAngle(activity.timeFrom);
-      const end = this.tsToAngle(activity.timeTo);
-      if (end < start) {
-        if (
-          (angleDegrees >= start && angleDegrees <= 360) ||
-          angleDegrees <= end
-        ) {
+    // Check whether selecting a time to
+    let selectingTimeTo = false;
+    // Loop through activities
+    for (let i = 0; i < this.props.activities.length; i++) {
+      if (this.props.activities[i].timeTo == null) {
+        // Selecting a time to so restrict the cursor
+        selectingTimeTo = true;
+        let timeTo = this.angleToTs(angleDegrees);
+        // If we cross the current time, limit the cursor there
+        if (timeTo < this.props.activities[i].timeFrom) {
+          timeTo = this.state.timeTo;
+        }
+        // Check to see if we cross into another activity, limit the cursor at its start
+        for (let j = 0; j < this.props.activities.length; j++) {
+          if (
+            this.props.activities[j].timeFrom >
+              this.props.activities[i].timeFrom &&
+            timeTo > this.props.activities[j].timeFrom
+          ) {
+            timeTo = this.props.activities[j].timeFrom;
+          }
+        }
+        // Convert time to degrees
+        angleDegrees = this.tsToAngle(timeTo);
+      }
+    }
+    if (!selectingTimeTo) {
+      // Not selecting a time to so check whether cursor is not in free space
+      for (let activity of this.props.activities) {
+        // Convert the times to angles
+        const start = this.tsToAngle(activity.timeFrom);
+        const end = this.tsToAngle(activity.timeTo);
+        if (end < start) {
+          if (
+            (angleDegrees >= start && angleDegrees <= 360) ||
+            angleDegrees <= end
+          ) {
+            inFreeSpace = false;
+            break;
+          }
+        } else if (angleDegrees >= start && angleDegrees <= end) {
           inFreeSpace = false;
           break;
         }
-      } else if (angleDegrees >= start && angleDegrees <= end) {
-        inFreeSpace = false;
-        break;
       }
     }
     // Update cursor angle and whether in free space in state
@@ -330,7 +372,7 @@ class Clock extends React.Component {
       if (this.props.activities[i].timeTo == null) {
         let newActivities = [...this.props.activities];
         // Set the time to as the cursor angle's time
-        newActivities[i].timeTo = this.angleToFutureTs(this.state.cursorAngle);
+        newActivities[i].timeTo = this.angleToTs(this.state.cursorAngle);
         // Give a fake description
         newActivities[i].description = this.generateDescription();
         // Update parents activities array
@@ -349,7 +391,7 @@ class Clock extends React.Component {
       // Add new activity to parent array
       let newActivites = [...this.props.activities];
       newActivites.push({
-        timeFrom: this.angleToFutureTs(this.state.cursorAngle),
+        timeFrom: this.angleToTs(this.state.cursorAngle),
         timeTo: null,
         description: null,
         colorString: this.state.nextColor
@@ -379,10 +421,7 @@ class Clock extends React.Component {
                 this.state.cursorAngle,
                 this.state.nextColor
               )}
-            {this.generateSVGLine(
-              this.tsToAngle(this.state.currentTime),
-              "#D2D2D2"
-            )}
+            {this.generateSVGLine(this.state.timeFromAngle, "#D2D2D2")}
             <circle className="donut-hole" cx="50%" cy="50%" r="20%" />
             {this.generateHourSVGTexts()}
           </svg>
